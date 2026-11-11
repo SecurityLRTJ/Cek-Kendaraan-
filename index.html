@@ -289,6 +289,12 @@
                 </div>
                 <span class="menu-text text-gray-300 group-hover:text-white font-medium ml-2">Galeri Inspeksi</span>
             </div>
+            <div onclick="openMenu('modal-member')" class="h-14 hover:bg-gray-800 cursor-pointer flex items-center transition group">
+                <div class="w-14 h-full flex items-center justify-center shrink-0 bg-black/20 group-hover:bg-transparent">
+                    <i class="ph ph-identification-card text-2xl text-yellow-500 group-hover:scale-110 transition-transform"></i>
+                </div>
+                <span class="menu-text text-gray-300 group-hover:text-white font-medium ml-2">Data Member</span>
+            </div>
             <div onclick="openMenu('modal-settings')" class="h-14 hover:bg-gray-800 cursor-pointer flex items-center transition group">
                 <div class="w-14 h-full flex items-center justify-center shrink-0 bg-black/20 group-hover:bg-transparent">
                     <i class="ph ph-sliders text-2xl text-yellow-500 group-hover:scale-110 transition-transform"></i>
@@ -410,6 +416,100 @@
         </div>
     </div>
 
+    <!-- Modal Data Member -->
+    <div id="modal-member" class="fixed inset-0 z-[60] flex-col bg-gray-900 hidden interactive h-full w-full overflow-hidden">
+        <div class="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center shadow-md pt-6">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="ph ph-identification-card text-yellow-500 text-xl"></i> Data Member</h3>
+            <div class="flex items-center gap-2">
+                <button id="btn-add-member" onclick="toggleMemberForm(true)" class="px-3 py-1 bg-yellow-500 text-black text-xs font-bold rounded-lg hover:bg-yellow-400 transition flex items-center gap-1">
+                    <i class="ph ph-plus text-sm"></i> Tambah
+                </button>
+                <button onclick="closeMenu('modal-member')" class="text-gray-400 hover:text-white p-2 bg-gray-700 rounded-full"><i class="ph ph-x text-lg"></i></button>
+            </div>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-6 text-gray-300">
+            <!-- Tampilan Kartu Member (List View) -->
+            <div id="member-list-view" class="space-y-3">
+                <div id="member-cards-container" class="space-y-3">
+                    <div class="text-center text-gray-500 mt-10 text-sm flex flex-col items-center gap-2">
+                        <i class="ph ph-users text-3xl opacity-30 mb-2"></i>
+                        Belum ada data member.<br>Tekan tombol + Tambah di atas.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulir Tambah Member (Tersembunyi secara default) -->
+            <form id="form-member" onsubmit="saveMember(event)" class="space-y-5 pb-6 hidden">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-2 mb-2">
+                    <h4 class="text-white font-bold text-sm">Formulir Pendaftaran Member</h4>
+                    <button type="button" onclick="toggleMemberForm(false)" class="text-xs text-gray-400 hover:text-white">Batal</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium mb-1.5 text-gray-400">Hari / Tanggal</label>
+                        <input type="date" id="m-date" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1.5 text-gray-400">Jam</label>
+                        <input type="time" id="m-time" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium mb-1.5 text-gray-400">Type KR (Kendaraan)</label>
+                        <select id="m-type" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm" required>
+                            <option value="" disabled selected>Pilih Tipe...</option>
+                            <option value="Minibus">Minibus</option>
+                            <option value="SUV">SUV</option>
+                            <option value="Sedan">Sedan</option>
+                            <option value="Truk/Pickup">Truk / Pickup</option>
+                            <option value="Motor">Motor</option>
+                            <option value="Lainnya">Lainnya</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1.5 text-gray-400">Nopol</label>
+                        <input type="text" id="m-nopol" placeholder="B 1234 ABC" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm uppercase" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium mb-1.5 text-gray-400">Nama</label>
+                        <input type="text" id="m-nama" placeholder="Nama Lengkap" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1.5 text-gray-400">Jabatan</label>
+                        <input type="text" id="m-jabatan" placeholder="Posisi / Jabatan" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm" required>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium mb-1.5 text-gray-400">Kondisi Kendaraan</label>
+                    <select id="m-kondisi" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm" required>
+                        <option value="" disabled selected>Pilih Kondisi...</option>
+                        <option value="Baik/Aman">Baik / Aman</option>
+                        <option value="Baret/Penyok Ringan">Baret / Penyok Ringan</option>
+                        <option value="Rusak/Penyok Berat">Rusak / Penyok Berat</option>
+                        <option value="Mencurigakan/Perlu Cek">Mencurigakan / Perlu Cek</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium mb-1.5 text-gray-400">Keterangan</label>
+                    <textarea id="m-ket" rows="3" placeholder="Tambahkan catatan khusus jika ada..." class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-yellow-500 transition text-sm"></textarea>
+                </div>
+
+                <button type="submit" class="w-full py-3.5 mt-2 bg-yellow-500 text-black rounded-lg font-bold hover:bg-yellow-400 transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="ph-fill ph-floppy-disk text-lg"></i> Simpan Data Member
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal Laporan & Bantuan (Gabungan) -->
     <div id="modal-report" class="fixed inset-0 z-[60] flex-col bg-gray-900 hidden interactive h-full w-full overflow-hidden">
         <div class="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center shadow-md pt-6">
@@ -506,6 +606,7 @@
         let isTorchSupported = false;
         let brightnessCheckInterval;
         let savedHistory = []; // Array of objects untuk menyimpan riwayat
+        let savedMembers = []; // Array untuk menyimpan Data Member
         
         // Motion Detection State & Variables
         let isAutoCaptureEnabled = true;
@@ -559,50 +660,65 @@
             if (currentStreamLeft) currentStreamLeft.getTracks().forEach(track => track.stop());
             if (currentStreamRight && currentStreamRight !== currentStreamLeft) currentStreamRight.getTracks().forEach(track => track.stop());
 
+            let stream;
+            const currentFacingMode = isSwapped ? 'environment' : 'user';
+
             try {
-                // Selalu paksa menggunakan kamera belakang (environment)
-                const constraints = { 
-                    video: { 
-                        facingMode: 'environment', 
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 } 
-                    }, 
-                    audio: false 
-                };
-                
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-                // Terapkan aliran (stream) kamera belakang yang sama ke layar kiri dan kanan
-                currentStreamLeft = stream;
-                currentStreamRight = stream;
-
-                // Set stream ke elemen video
-                videoElementLeft.srcObject = currentStreamLeft;
-                videoElementRight.srcObject = currentStreamRight;
-                
-                videoTrackLeft = currentStreamLeft.getVideoTracks()[0];
-
-                // Cek dukungan senter (torch) pada kamera
-                const capabilities = videoTrackLeft.getCapabilities ? videoTrackLeft.getCapabilities() : {};
-                isTorchSupported = !!capabilities.torch;
-                
-                if(!isTorchSupported) {
-                    flashStatusText.innerText = "Flash Tidak Didukung";
-                    labelFlash.innerText = "N/A";
-                    iconFlash.classList.add('opacity-50');
-                } else {
-                    updateFlashUI();
-                    // Mulai pengecekan kecerahan jika mode Auto
-                    startAutoBrightnessCheck();
+                // Percobaan 1: Kamera ideal (Resolusi tinggi + Sesuai hadapan)
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                    audio: false
+                });
+            } catch (err1) {
+                console.warn("Kamera ideal gagal, mencoba fallback 1...", err1);
+                try {
+                    // Percobaan 2: Kamera sesuai hadapan (Resolusi standar tanpa paksaan HD)
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: currentFacingMode },
+                        audio: false
+                    });
+                } catch (err2) {
+                    console.warn("Kamera hadapan spesifik gagal, mencoba fallback 2 (Kamera apapun)...", err2);
+                    try {
+                        // Percobaan 3: Ambil kamera apapun yang tersedia di device (PC/Laptop)
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: true,
+                            audio: false
+                        });
+                    } catch (err3) {
+                        console.error("Semua percobaan kamera gagal:", err3);
+                        alert("Gagal mengakses kamera. Pastikan izin kamera telah diberikan di pengaturan browser Anda.");
+                        return; // Berhenti jika semua gagal
+                    }
                 }
-
-                // Mulai deteksi gerakan (NumberCar mode default)
-                switchScanner('numbercar');
-
-            } catch (err) {
-                console.error("Gagal mengakses kamera:", err);
-                alert("Tidak dapat mengakses kamera belakang. Pastikan izin kamera telah diberikan.");
             }
+
+            // Terapkan aliran (stream) ke layar kiri dan kanan
+            currentStreamLeft = stream;
+            currentStreamRight = stream;
+
+            // Set stream ke elemen video
+            videoElementLeft.srcObject = currentStreamLeft;
+            videoElementRight.srcObject = currentStreamRight;
+            
+            videoTrackLeft = currentStreamLeft.getVideoTracks()[0];
+
+            // Cek dukungan senter (torch) pada kamera
+            const capabilities = videoTrackLeft.getCapabilities ? videoTrackLeft.getCapabilities() : {};
+            isTorchSupported = !!capabilities.torch;
+            
+            if(!isTorchSupported) {
+                flashStatusText.innerText = "Flash Tidak Didukung";
+                labelFlash.innerText = "N/A";
+                iconFlash.classList.add('opacity-50');
+            } else {
+                updateFlashUI();
+                // Mulai pengecekan kecerahan jika mode Auto
+                startAutoBrightnessCheck();
+            }
+
+            // Mulai ulang pemindai (Plat atau QR) sesuai tab yang aktif saat ini
+            switchScanner(activeScanner);
         }
 
         // Fungsi Ganti Kamera Depan/Belakang
@@ -722,78 +838,40 @@
         function startMotionDetection() {
             if (motionCheckInterval) clearInterval(motionCheckInterval);
             
-            // Atur posisi kotak pencarian menjadi statis/diam di tengah bawah
             const trackingBox = document.getElementById('tracking-box');
-            trackingBox.style.left = trackX + '%';
-            trackingBox.style.top = trackY + '%';
-            trackingBox.style.width = trackW + '%';
-            trackingBox.style.height = trackH + '%';
-            trackingBox.style.transform = `rotate(0deg)`;
 
+            // POLLING EKSTREM: 30ms (Sekitar 33 Frame per detik!)
             motionCheckInterval = setInterval(() => {
                 if (!videoElementRight.videoWidth || !isAutoCaptureEnabled || scanCooldown || activeScanner !== 'numbercar') return;
                 
-                canvasMotion.width = 64;
-                canvasMotion.height = 64;
-                ctxMotion.drawImage(videoElementRight, 0, 0, 64, 64);
-                const frameData = ctxMotion.getImageData(0, 0, 64, 64).data;
-                
-                if (previousFrame) {
-                    let changedPixels = 0;
-                    
-                    // Hitung jumlah pixel yang berubah (Mendeteksi Goyangan Kamera)
-                    for (let i = 0; i < frameData.length; i += 4) {
-                        let rDiff = Math.abs(frameData[i] - previousFrame[i]);
-                        let gDiff = Math.abs(frameData[i+1] - previousFrame[i+1]);
-                        let bDiff = Math.abs(frameData[i+2] - previousFrame[i+2]);
-                        
-                        // Deteksi pergerakan/goyangan
-                        if (rDiff + gDiff + bDiff > 80) {
-                            changedPixels++;
-                        }
-                    }
-                    
-                    let totalPixels = 64 * 64;
-                    let changePercent = (changedPixels / totalPixels) * 100;
-                    
-                    const trackingLabel = document.getElementById('tracking-box-label');
-
-                    // Jika kamera DIAM/STABIL (pergerakan kurang dari 5%)
-                    if (changePercent < 5) {
-                        stillnessCounter++;
-
-                        // DIPERCEPAT: Hanya butuh diam sebentar (0.4 detik) agar langsung memindai
-                        if (stillnessCounter > 2) { 
-                            // autoCaptureIndicator.classList.remove('hidden');
-                            document.getElementById('auto-capture-text').innerText = "MEMINDAI PLAT...";
-                            if(trackingLabel) trackingLabel.innerText = "MENGEKSTRAK TEKS...";
-                            
-                            // Visual Kotak Biru: Sedang membaca teks (OCR)
-                            trackingBox.classList.remove('border-yellow-400', 'bg-black/20', 'border-green-500', 'bg-green-500/20');
-                            trackingBox.classList.add('border-blue-500', 'bg-blue-500/30');
-
-                            if (!window.isProcessingOCR) {
-                                performRealtimeOCR();
-                            }
-                        } else {
-                            if(trackingLabel) trackingLabel.innerText = "TAHAN KAMERA (STABILKAN)";
-                            trackingBox.classList.remove('border-green-500', 'bg-green-500/20', 'border-blue-500', 'bg-blue-500/30');
-                            trackingBox.classList.add('border-yellow-400', 'bg-black/20');
-                        }
-
-                    } else {
-                        // Kamera sedang digoyangkan / Petugas sedang mengarahkan
-                        stillnessCounter = 0;
-                        // autoCaptureIndicator.classList.add('hidden');
-                        if(trackingLabel) trackingLabel.innerText = "ARAHKAN PLAT KE KOTAK";
-                        
-                        trackingBox.classList.remove('border-green-500', 'bg-green-500/20', 'border-blue-500', 'bg-blue-500/30');
-                        trackingBox.classList.add('border-yellow-400', 'bg-black/20');
-                    }
+                const trackingLabel = document.getElementById('tracking-box-label');
+                if(trackingLabel && trackingLabel.innerText !== "PLAT TERBACA") {
+                    trackingLabel.innerText = "MEMINDAI SUPER CEPAT...";
                 }
                 
-                previousFrame = new Uint8ClampedArray(frameData);
-            }, 200); // Interval dipercepat menjadi 200ms
+                trackingBox.classList.remove('border-yellow-400', 'bg-black/20', 'border-green-500', 'bg-green-500/20');
+                trackingBox.classList.add('border-blue-500', 'bg-blue-500/30');
+
+                // --- MODE STATIS (DIAM) ---
+                // Kunci posisi kotak agar tidak bergerak atau melar
+                trackX = 7.5;
+                trackY = 41;
+                trackW = 85;
+                trackH = 18;
+                trackAngle = 0;
+                
+                // Render wujud dan posisi kotak agar tetap presisi
+                trackingBox.style.left = trackX + '%';
+                trackingBox.style.top = trackY + '%';
+                trackingBox.style.width = trackW + '%';
+                trackingBox.style.height = trackH + '%';
+                trackingBox.style.transform = `rotate(${trackAngle}deg)`;
+
+                // Pemindaian Brutal & Agresif AI
+                if (!window.isProcessingOCR) {
+                    performRealtimeOCR();
+                }
+            }, 30); // Berjalan nyaris tanpa jeda
         }
 
         async function performRealtimeOCR() {
@@ -819,19 +897,19 @@
                 const cropH = (vh * trackH * 0.70) / 100; 
                 const cropYAdjusted = cropY; // Mulai dari ujung paling atas kotak
 
-                // SUPER CEPAT: Jangan perbesar gambar, gunakan skala 1x (asli). 
-                // Kamera HP modern sudah HD, tidak perlu diperbesar lagi.
-                const scale = 1;
-                canvas.width = cropW * scale; 
-                canvas.height = cropH * scale;
+                // RAHASIA KECEPATAN SUPER INSTAN:
+                // Turunkan skala menjadi 35% (Sangat kecil & ringan untuk AI)
+                const scale = 0.35; 
+                canvas.width = Math.max(1, Math.floor(cropW * scale)); 
+                canvas.height = Math.max(1, Math.floor(cropH * scale));
 
                 // Matikan Anti-Aliasing agar tepian huruf bersudut sangat tajam
                 ctx.imageSmoothingEnabled = false;
                 
-                // GPU ACCELERATION: Gunakan filter kanvas bawaan browser untuk performa secepat kilat (0 delay)
+                // GPU ACCELERATION: Filter secepat kilat (0 delay)
                 ctx.filter = 'grayscale(100%) contrast(300%) brightness(120%)';
                 
-                // 1. ROTASI & DE-SKEW (Luruskan gambar miring)
+                // 1. ROTASI & DE-SKEW
                 ctx.save();
                 ctx.translate(canvas.width / 2, canvas.height / 2);
                 ctx.rotate(-trackAngle * Math.PI / 180); 
@@ -846,30 +924,29 @@
                 );
                 ctx.restore();
                 
-                // Reset filter agar lis putih tidak ikut ter-filter
                 ctx.filter = 'none';
 
-                // 2. BORDER CLEANER (Beri lis putih tebal di tepi agar border plat tidak terbaca)
+                // 2. BORDER CLEANER (Lis putih tebal)
                 ctx.fillStyle = 'white';
-                const borderSize = 10; // Cukup 10px untuk skala 1x
-                ctx.fillRect(0, 0, canvas.width, borderSize); // Atas
-                ctx.fillRect(0, canvas.height - borderSize, canvas.width, borderSize); // Bawah
-                ctx.fillRect(0, 0, borderSize, canvas.height); // Kiri
-                ctx.fillRect(canvas.width - borderSize, 0, borderSize, canvas.height); // Kanan
+                const borderSize = Math.max(3, Math.floor(10 * scale));
+                ctx.fillRect(0, 0, canvas.width, borderSize);
+                ctx.fillRect(0, canvas.height - borderSize, canvas.width, borderSize);
+                ctx.fillRect(0, 0, borderSize, canvas.height);
+                ctx.fillRect(canvas.width - borderSize, 0, borderSize, canvas.height);
 
-                // 3. EKSTRAKSI AI (Hanya izinkan karakter alfanumerik) - Gunakan pre-loaded Worker untuk kecepatan ekstra
                 if (!tesseractWorker) {
                     window.isProcessingOCR = false;
                     return;
                 }
                 
-                // Ambil Teks DAN Nilai Keyakinan (Confidence)
-                const { data: { text, confidence } } = await tesseractWorker.recognize(canvas);
+                // KOMPRESI EKSTREM: Format JPEG di-set ke kualitas 50% (0.5) 
+                // Sangat ringan untuk ditransfer dan dibaca memori!
+                const imageDataUrl = canvas.toDataURL('image/jpeg', 0.5);
 
-                // --- ALGORITMA VALIDASI & KOREKSI SPESIFIK PLAT INDONESIA (AKURASI MUTLAK) ---
-                
-                // BUANG JIKA AI RAGU-RAGU: Jika gambar buram atau confidence di bawah 65%, abaikan (jangan asal jepret!)
-                if (confidence < 65) {
+                const { data: { text, confidence } } = await tesseractWorker.recognize(imageDataUrl);
+
+                // --- ALGORITMA VALIDASI (AKURASI MUTLAK) ---
+                if (confidence < 40) {
                     window.isProcessingOCR = false;
                     return;
                 }
@@ -880,7 +957,6 @@
                     let firstDigitIdx = rawText.search(/[0-9]/);
                     let lastDigitIdx = -1;
                     
-                    // Cari angka terakhir dari belakang
                     for (let i = rawText.length - 1; i >= 0; i--) {
                         if (/[0-9]/.test(rawText[i])) {
                             lastDigitIdx = i;
@@ -893,7 +969,7 @@
                         let numberRaw = rawText.substring(firstDigitIdx, lastDigitIdx + 1);
                         let suffixRaw = rawText.substring(lastDigitIdx + 1);
 
-                        // Auto-koreksi huruf depan yang salah baca jadi angka
+                        // Auto-koreksi huruf depan
                         if (areaCodeRaw.length === 0) {
                             let f = rawText[0];
                             if (f === '8') { areaCodeRaw = 'B'; numberRaw = numberRaw.substring(1); }
@@ -901,7 +977,7 @@
                             else if (f === '6') { areaCodeRaw = 'G'; numberRaw = numberRaw.substring(1); }
                         }
 
-                        // Koreksi silang (Angka mirip huruf & Huruf mirip angka)
+                        // Koreksi silang
                         let mapToLetters = {'0':'O', '8':'B', '6':'G', '2':'Z', '5':'S', '1':'I'};
                         let areaCode = areaCodeRaw.replace(/[086251]/g, m => mapToLetters[m]);
                         let suffix = suffixRaw.replace(/[086251]/g, m => mapToLetters[m]);
@@ -909,7 +985,7 @@
                         let mapToNumbers = {'O':'0', 'I':'1', 'Z':'2', 'S':'5', 'B':'8', 'G':'6', 'A':'4'};
                         let number = numberRaw.replace(/[OIZSBGA]/g, m => mapToNumbers[m]);
 
-                        // VALIDASI SUPER KETAT: Kode wilayah WAJIB terdaftar dalam kamus `validAreaCodes`!
+                        // VALIDASI SUPER KETAT
                         if (validAreaCodes.includes(areaCode) && /^[0-9]{1,4}$/.test(number)) {
                             if (suffix.length === 0 || /^[A-Z]{1,3}$/.test(suffix)) {
                                 
@@ -920,7 +996,7 @@
                                     return;
                                 }
 
-                                // Ekstraksi SUKSES: Tampilkan & Fotokan!
+                                // Ekstraksi SUKSES!
                                 document.getElementById('auto-capture-text').innerText = formattedPlat;
                                 
                                 const trackingBox = document.getElementById('tracking-box');
@@ -931,9 +1007,7 @@
                                     document.getElementById('tracking-box-label').innerText = "PLAT TERBACA";
                                 }
                                 
-                                // Bunyikan suara "Tit" ala Scanner!
                                 playBeep();
-
                                 triggerAutoCapture(formattedPlat);
                             }
                         }
@@ -943,8 +1017,6 @@
                 console.error("OCR Error:", err);
             } finally {
                 window.isProcessingOCR = false;
-                // Cegah pemindaian terus-menerus jika AI gagal membaca plat yang sama
-                setTimeout(() => { stillnessCounter = 0; }, 500); 
             }
         }
 
@@ -960,17 +1032,37 @@
                 shutterFlash.classList.add('opacity-0');
             }, 150);
 
-            // Simpan ke riwayat
+            // Simpan ke riwayat (Logika Masuk & Keluar)
             const now = new Date().toLocaleTimeString();
-            const record = {
-                id: Date.now(),
-                time: now,
-                plate: detectedPlate || "B 1234 ABC",
-                imageLeft: getCroppedKolongBase64(),
-                imageRight: getCroppedPlateBase64()
-            };
+            const plateStr = detectedPlate || "B 1234 ABC";
+            const imgLeft = getCroppedKolongBase64();
+            const imgRight = getCroppedPlateBase64();
 
-            savedHistory.unshift(record);
+            // Cari apakah plat ini sudah masuk tapi belum keluar
+            let existingRecord = savedHistory.find(r => r.plate === plateStr && !r.keluar);
+
+            if (existingRecord) {
+                // Jika sudah ada Masuk, update data ini sebagai Keluar!
+                existingRecord.keluar = {
+                    time: now,
+                    imageLeft: imgLeft,
+                    imageRight: imgRight
+                };
+            } else {
+                // Jika belum ada, buat rekam jejak baru sebagai Masuk
+                const record = {
+                    id: Date.now(),
+                    plate: plateStr,
+                    masuk: {
+                        time: now,
+                        imageLeft: imgLeft,
+                        imageRight: imgRight
+                    },
+                    keluar: null // Belum keluar
+                };
+                savedHistory.unshift(record);
+            }
+
             updateHistoryUI();
             
             setTimeout(() => {
@@ -979,7 +1071,7 @@
                 
                 // Reset kembali Tracker Box ke mode pencarian (Kuning)
                 const trackingBox = document.getElementById('tracking-box');
-                trackingBox.classList.remove('border-green-500', 'bg-green-500/20');
+                trackingBox.classList.remove('border-green-500', 'bg-green-500/30', 'shadow-[0_0_20px_rgba(34,197,94,0.8)]');
                 trackingBox.classList.add('border-yellow-400', 'bg-black/20');
             }, 3000);
         }
@@ -1056,11 +1148,12 @@
             historyList.innerHTML = savedHistory.map(item => `
                 <div class="bg-gray-800 border border-gray-700 p-3 rounded-xl flex items-center justify-between shadow">
                     <div class="flex items-center gap-3">
-                        <img src="${item.imageRight}" class="w-16 h-12 object-cover rounded border border-yellow-500/50" alt="Plat">
+                        <img src="${item.keluar ? item.keluar.imageRight : item.masuk.imageRight}" class="w-16 h-12 object-cover rounded border border-yellow-500/50" alt="Plat">
                         <div>
                             <h4 class="text-white font-bold text-base tracking-wider">${item.plate}</h4>
                             <span class="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                <i class="ph ph-clock text-yellow-500"></i> ${item.time}
+                                <i class="ph ${item.keluar ? 'ph-arrow-fat-right text-red-400' : 'ph-arrow-fat-left text-blue-400'}"></i>
+                                ${item.keluar ? 'Keluar: ' + item.keluar.time : 'Masuk: ' + item.masuk.time}
                             </span>
                         </div>
                     </div>
@@ -1097,13 +1190,27 @@
             const item = savedHistory.find(i => i.id === id);
             if (!item) return;
 
-            document.getElementById('snap-time-masuk').innerText = item.time;
-            document.getElementById('snap-masuk-left').src = item.imageLeft;
-            document.getElementById('snap-masuk-right').src = item.imageRight;
+            // Render Foto MASUK
+            document.getElementById('snap-time-masuk').innerText = item.masuk.time;
+            document.getElementById('snap-masuk-left').src = item.masuk.imageLeft;
+            document.getElementById('snap-masuk-right').src = item.masuk.imageRight;
             
-            document.getElementById('snap-time-keluar').innerText = item.time;
-            document.getElementById('snap-keluar-left').src = item.imageLeft;
-            document.getElementById('snap-keluar-right').src = item.imageRight;
+            // Render Foto KELUAR
+            if (item.keluar) {
+                document.getElementById('snap-time-keluar').innerText = item.keluar.time;
+                document.getElementById('snap-keluar-left').src = item.keluar.imageLeft;
+                document.getElementById('snap-keluar-right').src = item.keluar.imageRight;
+                // Pastikan tidak redup
+                document.getElementById('snap-keluar-left').style.opacity = '1';
+                document.getElementById('snap-keluar-right').style.opacity = '1';
+            } else {
+                document.getElementById('snap-time-keluar').innerText = "BELUM KELUAR";
+                // Hapus gambar jika belum keluar dan redupkan
+                document.getElementById('snap-keluar-left').src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%231f2937'/></svg>";
+                document.getElementById('snap-keluar-right').src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%231f2937'/></svg>";
+                document.getElementById('snap-keluar-left').style.opacity = '0.2';
+                document.getElementById('snap-keluar-right').style.opacity = '0.2';
+            }
 
             snapshotModal.classList.remove('hidden');
         }
@@ -1122,10 +1229,10 @@
             }
             container.innerHTML = savedHistory.map(item => `
                 <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden flex flex-col">
-                    <img src="${item.imageRight}" class="w-full h-28 object-cover bg-black" alt="Gallery item">
+                    <img src="${item.masuk.imageRight}" class="w-full h-28 object-cover bg-black" alt="Gallery item">
                     <div class="p-2 flex flex-col justify-between flex-1">
                         <span class="text-white font-bold text-sm">${item.plate}</span>
-                        <span class="text-[10px] text-gray-400">${item.time}</span>
+                        <span class="text-[10px] text-gray-400">Masuk: ${item.masuk.time}</span>
                     </div>
                 </div>
             `).join('');
@@ -1134,6 +1241,87 @@
         function toggleGridSetting() {
             const grids = document.querySelectorAll('.inspection-grid');
             grids.forEach(g => g.classList.toggle('hidden'));
+        }
+
+        function toggleMemberForm(show) {
+            const list = document.getElementById('member-list-view');
+            const form = document.getElementById('form-member');
+            const btnAdd = document.getElementById('btn-add-member');
+            
+            if (show) {
+                list.classList.add('hidden');
+                form.classList.remove('hidden');
+                btnAdd.classList.add('hidden');
+                
+                // Isi tanggal dan waktu otomatis
+                document.getElementById('m-date').value = new Date().toISOString().split('T')[0];
+                document.getElementById('m-time').value = new Date().toTimeString().slice(0, 5);
+            } else {
+                list.classList.remove('hidden');
+                form.classList.add('hidden');
+                btnAdd.classList.remove('hidden');
+                form.reset();
+            }
+        }
+
+        function saveMember(e) {
+            e.preventDefault();
+            
+            // Ambil data dari formulir
+            const nopol = document.getElementById('m-nopol').value.toUpperCase();
+            const nama = document.getElementById('m-nama').value;
+            const type = document.getElementById('m-type').value;
+            const ket = document.getElementById('m-ket').value;
+            const date = document.getElementById('m-date').value;
+            
+            // Generate foto (dummy avatar/placeholder) karena akses file riil butuh Base64 Reader
+            // Jika Anda mengunggah file riil nantinya, ini bisa diganti dengan fungsi FileReader
+            const photoUrl = `https://placehold.co/150x150/222/eab308?text=${nopol.substring(0, 2)}`;
+
+            const memberData = {
+                id: Date.now(),
+                nopol: nopol,
+                nama: nama,
+                type: type,
+                keterangan: ket,
+                date: date,
+                photo: photoUrl
+            };
+            
+            savedMembers.unshift(memberData);
+            
+            // Render ulang list, sembunyikan form
+            renderMembers();
+            toggleMemberForm(false);
+            
+            alert("Data Member berhasil ditambahkan!");
+        }
+
+        function renderMembers() {
+            const container = document.getElementById('member-cards-container');
+            
+            if (savedMembers.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 mt-10 text-sm flex flex-col items-center gap-2">
+                        <i class="ph ph-users text-3xl opacity-30 mb-2"></i>
+                        Belum ada data member.<br>Tekan tombol + Tambah di atas.
+                    </div>`;
+                return;
+            }
+            
+            container.innerHTML = savedMembers.map(m => `
+                <div class="bg-gray-800 border border-gray-700 rounded-xl p-3 flex gap-3 shadow-lg relative">
+                    <img src="${m.photo}" class="w-[72px] h-[72px] rounded-lg object-cover border border-gray-600 shrink-0" alt="Foto">
+                    <div class="flex-1 flex flex-col justify-center min-w-0">
+                        <div class="flex justify-between items-start mb-0.5">
+                            <h4 class="text-yellow-400 font-extrabold text-base tracking-wide truncate">${m.nopol}</h4>
+                            <span class="text-[9px] bg-gray-700 px-2 py-0.5 rounded text-gray-300 border border-gray-600 whitespace-nowrap ml-2">${m.type}</span>
+                        </div>
+                        <p class="text-white font-semibold text-sm truncate">${m.nama}</p>
+                        <p class="text-gray-400 text-xs mt-1 italic truncate max-w-full">${m.keterangan ? '"' + m.keterangan + '"' : 'Tidak ada keterangan'}</p>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function submitReport(e) {
@@ -1163,14 +1351,30 @@
         }
 
         async function setTorch(enable) {
-            if (!isTorchSupported || !videoTrackLeft) return;
+            if (!isTorchSupported || !videoTrackLeft || videoTrackLeft.readyState !== 'live') return;
             try {
                 await videoTrackLeft.applyConstraints({
                     advanced: [{ torch: enable }]
                 });
                 isTorchOn = enable;
             } catch (err) {
-                console.error("Gagal mengubah status senter:", err);
+                console.warn("Senter ditolak oleh perangkat, mematikan fitur flash:", err.message);
+                
+                // Jika gagal (seperti error setPhotoOptions), matikan dukungan secara paksa 
+                // agar tidak terjadi error berulang di konsol.
+                isTorchSupported = false;
+                flashMode = 0;
+                isTorchOn = false;
+                
+                if (labelFlash) labelFlash.innerText = "N/A";
+                if (iconFlash) {
+                    iconFlash.className = "ph ph-flashlight-slash text-lg opacity-50";
+                }
+                if (flashStatusText) {
+                    flashStatusText.innerText = "Flash Tidak Didukung";
+                    flashStatusText.classList.remove('hidden');
+                    setTimeout(() => flashStatusText.classList.add('hidden'), 3000);
+                }
             }
         }
 
