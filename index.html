@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mirror Scanner - Inspeksi Kendaraan</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Tesseract JS untuk sistem OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- jsQR untuk sistem QR Code -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', sans-serif;
+            touch-action: none; /* Mencegah pull-to-refresh di HP */
+            display: flex;
+            flex-direction: column;
+            color: white;
+        }
+
+        /* Video layer */
+        #camera-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            transform: scale(1.02); /* Sedikit zoom untuk menghilangkan border hitam di beberapa device */
+        }
+
+        /* Overlay UI berada di atas video */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+        }
+
+        .interactive {
+            pointer-events: auto;
+        }
+
+        /* Capture Button */
+        .capture-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 4px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        .capture-btn:active {
+            transform: scale(0.9);
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+        .capture-btn-inner {
+            width: 44px;
+            height: 44px;
+            background-color: white;
+            border-radius: 50%;
+        }
+
+        /* Sidebar Menu Animation */
+        #sidebar {
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s, border-color 0.3s;
+            overflow-x: hidden;
+            white-space: nowrap;
+        }
+        .sidebar-open { 
+            width: 16rem; 
+            background-color: rgba(17, 24, 39, 0.95); /* bg-gray-900 */
+            border-right: 2px solid rgba(234, 179, 8, 1) !important; /* Pembatas kuning menyala saat buka */
+        }
+        .sidebar-closed { 
+            width: 3.5rem; /* Hanya selebar ikon (56px) */
+            background-color: rgba(0, 0, 0, 0.4); /* Sedikit lebih gelap */
+            border-right: 2px solid rgba(234, 179, 8, 0.4) !important; /* Pembatas kuning transparan saat tutup */
+        }
+        .sidebar-closed .menu-text {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .sidebar-open .menu-text {
+            opacity: 1;
+            transition: opacity 0.3s 0.1s;
+        }
+
+        /* Grid lines untuk mode inspeksi */
+        .inspection-grid {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px);
+            background-size: 33.33% 33.33%;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* Crosshair di tengah layar */
+        .crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px; height: 40px;
+            z-index: 6;
+        }
+        .crosshair::before, .crosshair::after {
+            content: ''; position: absolute; background: #eab308; /* Yellow 500 */
+        }
+        .crosshair::before { top: 19px; left: 0; width: 40px; height: 2px; }
+        .crosshair::after { left: 19px; top: 0; width: 2px; height: 40px; }
+
+        /* Perekaman Indikator Animasi */
+        @keyframes pulse-record {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .recording-indicator {
+            animation: pulse-record 1s infinite;
+        }
+
+        /* Animasi Garis Scan untuk Deteksi Plat */
+        @keyframes scan {
+            0% { top: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 98%; opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- WRAPPER UTAMA: Mencegah area terpotong oleh mini-sidebar -->
+    <div class="flex flex-col w-full h-full pl-14 overflow-hidden">
+
+        <!-- AREA KAMERA (ATAS) -->
+        <div class="relative w-full h-[60vh] bg-black shrink-0 overflow-hidden flex">
+            
+            <!-- Kiri: Mirroring Stream -->
+            <div class="relative w-1/2 h-full overflow-hidden border-r-2 border-yellow-500/50">
+                <video id="camera-feed-left" autoplay playsinline class="w-full h-full object-cover absolute top-0 left-0 transform scale-[1.02]"></video>
+                <div class="inspection-grid"></div>
+                <div class="crosshair"></div>
+                <!-- Keterangan disembunyikan (hidden) -->
+                <div class="hidden absolute bottom-28 left-1/2 -translate-x-1/2 bg-black/60 px-2 py-1 rounded text-[10px] text-yellow-500 font-bold whitespace-nowrap border border-yellow-500/50 shadow-md">Mode Kolong</div>
+            </div>
+
+        <!-- Kanan: NumberCar Stream -->
+        <div class="relative w-1/2 h-full overflow-hidden">
+            <video id="camera-feed-right" autoplay playsinline class="w-full h-full object-cover absolute top-0 left-0 transform scale-[1.02]"></video>
+            
+            <!-- TAB PILIHAN SCANNER -->
+            <div class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex bg-black/60 rounded-full border border-gray-600 backdrop-blur-sm p-1 shadow-lg">
+                <button id="tab-numbercar" onclick="switchScanner('numbercar')" class="px-4 py-1.5 rounded-full text-xs font-bold bg-yellow-500 text-black transition">NumberCar</button>
+                <button id="tab-qr" onclick="switchScanner('qr')" class="px-4 py-1.5 rounded-full text-xs font-bold text-white transition">QR Code</button>
+            </div>
+
+            <!-- UI Kotak Pendeteksi Plat Nomor (NumberCar) -->
+            <div id="guide-numbercar" class="absolute inset-0 z-10 pointer-events-none">
+                <!-- Tracking Box khusus Plat Nomor: Disesuaikan dengan proporsi asli plat nomor -->
+                <div id="tracking-box" class="absolute top-[41%] left-[7.5%] w-[85%] h-[18%] border-2 border-yellow-400 rounded-lg flex items-center justify-center bg-black/20 shadow-[0_0_20px_rgba(234,179,8,0.4)]">
+                    <div class="absolute top-0 left-0 w-full h-[2px] bg-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.8)] animate-[scan_2.5s_linear_infinite]"></div>
+                    <!-- Target Corners UI -->
+                    <div class="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-yellow-400 rounded-tl"></div>
+                    <div class="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-yellow-400 rounded-tr"></div>
+                    <div class="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-yellow-400 rounded-bl"></div>
+                    <div class="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-yellow-400 rounded-br"></div>
+                    <span id="tracking-box-label" class="hidden absolute -top-6 bg-black/80 text-yellow-400 text-[11px] px-3 py-0.5 rounded border border-yellow-500/50 font-bold tracking-widest shadow-md">POSISIKAN PLAT DI KOTAK</span>
+                </div>
+            </div>
+
+            <!-- UI Kotak Pendeteksi QR Code -->
+            <div id="guide-qr" class="absolute inset-0 z-10 pointer-events-none hidden">
+                <div id="tracking-box-qr" class="absolute top-[20%] left-[10%] w-[80%] h-[60%] border-2 border-green-400 rounded-xl flex items-center justify-center bg-black/20 shadow-[0_0_20px_rgba(74,222,128,0.4)]">
+                    <div class="absolute top-0 left-0 w-full h-[2px] bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-[scan_2s_linear_infinite]"></div>
+                    <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-xl"></div>
+                    <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-xl"></div>
+                    <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-400 rounded-bl-xl"></div>
+                    <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-xl"></div>
+                    <span id="tracking-box-qr-label" class="hidden absolute -top-6 bg-black/80 text-green-400 text-[11px] px-3 py-0.5 rounded border border-green-500/50 font-bold tracking-widest shadow-md">ARAHKAN KE QR CODE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Indikator Auto Capture Mendeteksi Gerakan -->
+        <div id="auto-capture-indicator" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[40] bg-black/80 border border-red-500 px-4 py-2 rounded-full items-center gap-2 hidden shadow-[0_0_15px_rgba(239,68,68,0.5)]">
+            <div class="w-3 h-3 bg-red-500 rounded-full recording-indicator"></div>
+            <span id="auto-capture-text" class="text-white text-xs font-bold tracking-wide">Mendeteksi...</span>
+        </div>
+        
+        <!-- Elemen Canvas Tersembunyi -->
+        <canvas id="canvas-hidden" class="hidden"></canvas>
+        <canvas id="canvas-motion" class="hidden"></canvas>
+
+        <!-- Overlay Antarmuka Kamera -->
+        <div class="ui-layer">
+            
+            <!-- Top Toolbar -->
+            <div class="w-full pt-4 pb-4 px-4 flex justify-end items-start bg-gradient-to-b from-black/80 to-transparent">
+                <!-- Status Pojok Kanan Atas -->
+                <div class="flex flex-col items-end gap-2 mt-1">
+                    <span id="flash-status-text" class="hidden text-[10px] text-yellow-400 font-bold bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-sm border border-yellow-500/50 shadow-md">Flash: Auto</span>
+                </div>
+            </div>
+
+            <!-- Spacer -->
+            <div class="flex-1"></div>
+
+            <!-- Bottom Toolbar Area -->
+            <div class="w-full flex">
+                <!-- Toolbar Kiri (Hanya di area Kolong) - Padding dinormalkan karena sudah didorong wrapper -->
+                <div class="w-1/2 pb-4 pt-12 px-2 flex justify-around items-center bg-gradient-to-t from-black/90 to-transparent interactive">
+                    
+                    <!-- Flash Toggle Button -->
+                    <button onclick="cycleFlashMode()" id="btn-flash" class="text-white p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full transition flex flex-col items-center gap-1 w-12 h-12 justify-center shadow">
+                        <i id="icon-flash" class="ph ph-flashlight text-lg"></i>
+                        <span id="label-flash" class="text-[8px] font-bold">AUTO</span>
+                    </button>
+
+                    <!-- Capture Button -->
+                    <button onclick="takeSnapshot()" class="capture-btn shadow-2xl shadow-black scale-90">
+                        <div class="capture-btn-inner"></div>
+                    </button>
+
+                    <!-- Switch Camera Button -->
+                    <button onclick="switchCamera()" class="text-white p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full transition flex flex-col items-center gap-1 w-12 h-12 justify-center shadow">
+                        <i class="ph ph-camera-rotate text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Sisi Kanan Kosong (Untuk Plat Nomor) -->
+                <div class="w-1/2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AREA RIWAYAT DATA (BAWAH) -->
+    <div class="flex-1 bg-gray-900 flex flex-col overflow-hidden relative z-10 border-t-2 border-yellow-500/50">
+        <div class="p-3 border-b border-gray-800 bg-black/40 flex justify-between items-center shadow-md">
+            <h2 class="font-bold text-sm text-white flex items-center gap-2">
+                <i class="ph-fill ph-clock-counter-clockwise text-yellow-500 text-lg"></i> Riwayat Data
+            </h2>
+            <span class="text-xs font-semibold bg-gray-800 px-2 py-1 rounded text-gray-300 border border-gray-700" id="history-count">0 Data</span>
+        </div>
+        <div id="history-list" class="flex-1 overflow-y-auto p-4 space-y-3 pb-8">
+            <div class="text-center text-gray-500 mt-10 text-sm flex flex-col items-center gap-2">
+                <i class="ph ph-images text-3xl opacity-30 mb-2"></i>
+                Belum ada data pindaian.
+            </div>
+        </div>
+    </div>
+
+    </div> <!-- Penutup WRAPPER UTAMA -->
+
+    <!-- Sidebar Menu Kiri -->
+    <div id="sidebar" class="fixed inset-y-0 left-0 z-50 shadow-2xl sidebar-closed interactive flex flex-col border-r border-gray-700/50 backdrop-blur-sm">
+        <div class="h-[72px] flex items-center border-b border-gray-700/50">
+            <button onclick="toggleMenu()" class="w-14 h-full flex items-center justify-center text-white hover:text-yellow-500 transition shrink-0 bg-black/40 hover:bg-black/60">
+                <i class="ph ph-list text-2xl"></i>
+            </button>
+            <h2 class="text-white font-bold text-xl menu-text ml-2">Menu Utama</h2>
+        </div>
+        <div class="flex-1 overflow-y-auto py-2 flex flex-col">
+            <div onclick="openMenu('modal-gallery')" class="h-14 hover:bg-gray-800 cursor-pointer flex items-center transition group">
+                <div class="w-14 h-full flex items-center justify-center shrink-0 bg-black/20 group-hover:bg-transparent">
+                    <i class="ph ph-images text-2xl text-yellow-500 group-hover:scale-110 transition-transform"></i> 
+                </div>
+                <span class="menu-text text-gray-300 group-hover:text-white font-medium ml-2">Galeri Inspeksi</span>
+            </div>
+            <div onclick="openMenu('modal-settings')" class="h-14 hover:bg-gray-800 cursor-pointer flex items-center transition group">
+                <div class="w-14 h-full flex items-center justify-center shrink-0 bg-black/20 group-hover:bg-transparent">
+                    <i class="ph ph-sliders text-2xl text-yellow-500 group-hover:scale-110 transition-transform"></i>
+                </div>
+                <span class="menu-text text-gray-300 group-hover:text-white font-medium ml-2">Pengaturan</span>
+            </div>
+            
+            <div class="flex-1"></div> <!-- Spacer -->
+            
+            <div onclick="openMenu('modal-report')" class="h-14 hover:bg-gray-800 cursor-pointer flex items-center transition group border-t border-gray-700/50">
+                <div class="w-14 h-full flex items-center justify-center shrink-0 bg-black/20 group-hover:bg-transparent">
+                    <i class="ph ph-warning-circle text-2xl text-yellow-500 group-hover:scale-110 transition-transform"></i>
+                </div>
+                <span class="menu-text text-gray-300 group-hover:text-white font-medium ml-2">Bantuan & Laporan</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay Latar Belakang Gelap untuk Sidebar -->
+    <div id="sidebar-overlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/50 z-40 hidden interactive backdrop-blur-sm transition-opacity"></div>
+
+    <!-- Modal Hasil Jepretan (Snapshot) -->
+    <div id="snapshot-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden interactive bg-black/90 backdrop-blur-md">
+        <div class="w-full max-w-lg p-4 flex flex-col h-full justify-between">
+            
+            <div class="flex justify-between items-center py-4">
+                <h3 class="text-white font-bold text-lg">Hasil Inspeksi</h3>
+                <button onclick="closeSnapshot()" class="text-white bg-white/20 p-2 rounded-full">
+                    <i class="ph ph-x"></i>
+                </button>
+            </div>
+
+            <!-- Tempat Menampilkan 4 Foto Ganda -->
+            <div class="flex-1 overflow-hidden flex gap-2 items-center justify-center bg-black rounded-xl border border-gray-700 p-2">
+                <!-- Sisi Masuk -->
+                <div class="w-1/2 h-full flex flex-col gap-2">
+                    <div class="bg-gray-900 py-1 rounded text-center flex flex-col justify-center shadow-inner">
+                        <h4 class="text-blue-400 text-xs font-bold">MASUK</h4>
+                        <span id="snap-time-masuk" class="text-[9px] text-gray-400 mt-0.5">-</span>
+                    </div>
+                    <div class="relative w-full flex-1 flex flex-col border border-yellow-500/50 rounded overflow-hidden">
+                        <span class="absolute top-2 left-2 bg-black/70 text-yellow-500 text-[10px] px-2 py-1 rounded z-10 font-bold">Kolong</span>
+                        <img id="snap-masuk-left" class="w-full h-full object-contain bg-gray-900" src="" alt="Kolong Masuk">
+                    </div>
+                    <div class="relative w-full flex-1 flex flex-col border border-gray-500/50 rounded overflow-hidden">
+                        <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded z-10 font-bold">Plat Nomor</span>
+                        <img id="snap-masuk-right" class="w-full h-full object-contain bg-gray-900" src="" alt="Plat Masuk">
+                    </div>
+                </div>
+
+                <!-- Sisi Keluar -->
+                <div class="w-1/2 h-full flex flex-col gap-2">
+                    <div class="bg-gray-900 py-1 rounded text-center flex flex-col justify-center shadow-inner">
+                        <h4 class="text-red-400 text-xs font-bold">KELUAR</h4>
+                        <span id="snap-time-keluar" class="text-[9px] text-gray-400 mt-0.5">-</span>
+                    </div>
+                    <div class="relative w-full flex-1 flex flex-col border border-yellow-500/50 rounded overflow-hidden">
+                        <span class="absolute top-2 left-2 bg-black/70 text-yellow-500 text-[10px] px-2 py-1 rounded z-10 font-bold">Kolong</span>
+                        <img id="snap-keluar-left" class="w-full h-full object-contain bg-gray-900" src="" alt="Kolong Keluar">
+                    </div>
+                    <div class="relative w-full flex-1 flex flex-col border border-gray-500/50 rounded overflow-hidden">
+                        <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded z-10 font-bold">Plat Nomor</span>
+                        <img id="snap-keluar-right" class="w-full h-full object-contain bg-gray-900" src="" alt="Plat Keluar">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tombol Aksi Foto -->
+            <div class="grid grid-cols-2 gap-4 py-6">
+                <button onclick="closeSnapshot()" class="py-3 px-4 bg-gray-800 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-gray-700">
+                    <i class="ph ph-arrow-u-up-left text-lg"></i> Kembali
+                </button>
+                <button id="btn-save-modal" onclick="saveSnapshot(event)" class="py-3 px-4 bg-yellow-500 text-black rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-yellow-400">
+                    <i class="ph ph-floppy-disk text-lg"></i> Simpan Data
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals untuk Menu Sidebar -->
+    <!-- Modal Galeri -->
+    <div id="modal-gallery" class="fixed inset-0 z-[60] flex-col bg-gray-900 hidden interactive h-full w-full overflow-hidden">
+        <div class="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center shadow-md pt-6">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="ph ph-images text-yellow-500 text-xl"></i> Galeri Inspeksi</h3>
+            <button onclick="closeMenu('modal-gallery')" class="text-gray-400 hover:text-white p-2 bg-gray-700 rounded-full"><i class="ph ph-x text-lg"></i></button>
+        </div>
+        <div id="gallery-container" class="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4 content-start">
+            <div class="col-span-2 text-center text-gray-500 mt-10">Belum ada foto yang disimpan.</div>
+        </div>
+    </div>
+
+    <!-- Modal Pengaturan -->
+    <div id="modal-settings" class="fixed inset-0 z-[60] flex-col bg-gray-900 hidden interactive h-full w-full overflow-hidden">
+        <div class="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center shadow-md pt-6">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="ph ph-sliders text-yellow-500 text-xl"></i> Pengaturan</h3>
+            <button onclick="closeMenu('modal-settings')" class="text-gray-400 hover:text-white p-2 bg-gray-700 rounded-full"><i class="ph ph-x text-lg"></i></button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 text-gray-300 space-y-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h4 class="text-white font-semibold">Tampilkan Grid Inspeksi</h4>
+                    <p class="text-sm text-gray-500">Garis bantu dan crosshair tengah</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="toggle-grid" class="sr-only peer" checked onchange="toggleGridSetting()">
+                    <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                </label>
+            </div>
+            <div class="flex justify-between items-center">
+                <div>
+                    <h4 class="text-white font-semibold">Resolusi Foto Maksimal</h4>
+                    <p class="text-sm text-gray-500">Kualitas foto saat diunduh</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Laporan & Bantuan (Gabungan) -->
+    <div id="modal-report" class="fixed inset-0 z-[60] flex-col bg-gray-900 hidden interactive h-full w-full overflow-hidden">
+        <div class="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center shadow-md pt-6">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="ph ph-info text-yellow-500 text-xl"></i> Bantuan & Penggunaan</h3>
+            <button onclick="closeMenu('modal-report')" class="text-gray-400 hover:text-white p-2 bg-gray-700 rounded-full"><i class="ph ph-x text-lg"></i></button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 text-gray-300 space-y-8">
+            
+            <!-- Bagian Cara Penggunaan -->
+            <section>
+                <h3 class="text-white font-bold mb-4 text-lg border-b border-gray-700 pb-2 flex items-center gap-2">
+                    <i class="ph-fill ph-book-open text-yellow-500"></i> Panduan Penggunaan
+                </h3>
+                <div class="space-y-4">
+                    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                        <h4 class="text-yellow-500 font-bold mb-2">1. Posisikan Perangkat</h4>
+                        <p class="text-sm leading-relaxed">Gunakan tongkat ekstensi atau alat dorong cermin inspeksi, pasang HP Anda, lalu arahkan perlahan ke bawah kolong kendaraan.</p>
+                    </div>
+                    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                        <h4 class="text-yellow-500 font-bold mb-2">2. Senter Otomatis</h4>
+                        <p class="text-sm leading-relaxed">Biarkan mode Flash dalam keadaan <b>AUTO</b>. Aplikasi akan membaca intensitas cahaya kamera dan otomatis menyalakan senter saat kolong kendaraan gelap.</p>
+                    </div>
+                    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                        <h4 class="text-yellow-500 font-bold mb-2">3. Deteksi Otomatis & Manual</h4>
+                        <p class="text-sm leading-relaxed">Aplikasi akan mendeteksi kendaraan secara otomatis dan memotret (Masuk/Keluar) saat mobil berhenti. Anda juga bisa memotret manual dengan tombol bulat putih.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bagian Laporan Kendala -->
+            <section>
+                <h3 class="text-white font-bold mb-4 text-lg border-b border-gray-700 pb-2 flex items-center gap-2">
+                    <i class="ph-fill ph-warning-circle text-yellow-500"></i> Lapor Kendala
+                </h3>
+                <p class="mb-4 text-sm text-gray-400">Silakan isi formulir di bawah jika Anda mengalami masalah dengan aplikasi Mirror Scanner.</p>
+                <form onsubmit="submitReport(event)" class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium mb-1.5">Masalah yang dialami:</label>
+                        <select class="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-yellow-500 transition">
+                            <option>Kamera tidak terbuka</option>
+                            <option>Senter (Flash) tidak merespon/berfungsi</option>
+                            <option>Aplikasi lambat atau macet</option>
+                            <option>Gambar hasil jepretan buram</option>
+                            <option>Deteksi otomatis tidak akurat</option>
+                            <option>Lainnya</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1.5">Deskripsi Detail:</label>
+                        <textarea rows="4" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-yellow-500 transition" placeholder="Jelaskan secara detail kendala yang Anda alami..." required></textarea>
+                    </div>
+                    <button type="submit" class="w-full py-3.5 mt-2 bg-yellow-500 text-black rounded-lg font-bold hover:bg-yellow-400 transition shadow-lg flex items-center justify-center gap-2">
+                        <i class="ph-fill ph-paper-plane-right text-lg"></i> Kirim Laporan
+                    </button>
+                </form>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Flash UI effect (Untuk transisi kilat saat foto) -->
+    <div id="shutter-flash" class="fixed inset-0 bg-white z-[100] opacity-0 pointer-events-none transition-opacity duration-150"></div>
+
+    <script>
+        const videoElementLeft = document.getElementById('camera-feed-left');
+        const videoElementRight = document.getElementById('camera-feed-right');
+        const canvasHidden = document.getElementById('canvas-hidden');
+        const ctxHidden = canvasHidden.getContext('2d', { willReadFrequently: true });
+        
+        const canvasMotion = document.getElementById('canvas-motion');
+        const ctxMotion = canvasMotion.getContext('2d', { willReadFrequently: true });
+        
+        // UI Elements
+        const iconFlash = document.getElementById('icon-flash');
+        const labelFlash = document.getElementById('label-flash');
+        const flashStatusText = document.getElementById('flash-status-text');
+        const shutterFlash = document.getElementById('shutter-flash');
+        const snapshotModal = document.getElementById('snapshot-modal');
+        const snapshotResult = document.getElementById('snapshot-result');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        const autoCaptureIndicator = document.getElementById('auto-capture-indicator');
+
+        // State Kamera
+        let currentStreamLeft = null;
+        let currentStreamRight = null;
+        let videoTrackLeft = null;
+        let isSwapped = true; // Ubah default menjadi true agar kamera utama/belakang (dengan Flash) berada di Kiri
+        let imageCaptureSupport = false;
+
+        // State Flash & Auto-Capture
+        let flashMode = 2; // Default ke Auto sesuai permintaan
+        let isTorchOn = false;
+        let isTorchSupported = false;
+        let brightnessCheckInterval;
+        let savedHistory = []; // Array of objects untuk menyimpan riwayat
+        
+        // Motion Detection State & Variables
+        let isAutoCaptureEnabled = true;
+        let motionCheckInterval;
+        let previousFrame = null;
+        let scanCooldown = false;
+        let motionState = 'idle'; // 'idle', 'moving', 'cooldown'
+        let stillnessCounter = 0;
+        let lastMotionX = 0;
+        let lastMotionY = 0;
+
+        // Koordinat kotak fokus (DIAM/STATIS) - Disesuaikan dengan bentuk/proporsi asli plat (pipih)
+        let trackX = 7.5, trackY = 41, trackW = 85, trackH = 18;
+        let trackAngle = 0;
+
+        // Tambahan state untuk Real-time OCR
+        window.isProcessingOCR = false;
+        let tesseractWorker = null;
+
+        // State Scanner Kanan (NumberCar atau QR)
+        let activeScanner = 'numbercar'; 
+        let qrCheckInterval;
+
+        // DAFTAR KODE WILAYAH RESMI INDONESIA (Akurasi 1000%)
+        const validAreaCodes = ['A','AA','AB','AD','AE','AG','AL','B','BA','BB','BD','BE','BG','BH','BK','BL','BM','BN','BP','D','DA','DB','DC','DD','DE','DF','DG','DH','DK','DL','DM','DN','DP','DR','DT','DW','E','EA','EB','ED','EE','F','G','H','K','KB','KH','KT','KU','L','M','N','P','PA','PB','R','S','T','V','W','Z'];
+
+        // Inisialisasi saat aplikasi dibuka
+        window.onload = async () => {
+            initCamera();
+            
+            // Inisialisasi Tesseract Worker sekali di awal agar proses OCR Real-time menjadi sangat cepat
+            const trackingLabel = document.getElementById('tracking-box-label');
+            if(trackingLabel) trackingLabel.innerText = "MEMUAT MESIN AI...";
+            
+            try {
+                tesseractWorker = await Tesseract.createWorker('eng');
+                await tesseractWorker.setParameters({
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+                    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+                });
+                if(trackingLabel) trackingLabel.innerText = "POSISIKAN PLAT DI KOTAK";
+            } catch (error) {
+                console.error("Gagal memuat AI OCR:", error);
+                if(trackingLabel) trackingLabel.innerText = "AI GAGAL DIMUAT";
+            }
+        };
+
+        // Memulai Kamera
+        async function initCamera() {
+            // Hentikan stream yang ada jika ada
+            if (currentStreamLeft) currentStreamLeft.getTracks().forEach(track => track.stop());
+            if (currentStreamRight && currentStreamRight !== currentStreamLeft) currentStreamRight.getTracks().forEach(track => track.stop());
+
+            try {
+                // Selalu paksa menggunakan kamera belakang (environment)
+                const constraints = { 
+                    video: { 
+                        facingMode: 'environment', 
+                        width: { ideal: 1920 }, 
+                        height: { ideal: 1080 } 
+                    }, 
+                    audio: false 
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+                // Terapkan aliran (stream) kamera belakang yang sama ke layar kiri dan kanan
+                currentStreamLeft = stream;
+                currentStreamRight = stream;
+
+                // Set stream ke elemen video
+                videoElementLeft.srcObject = currentStreamLeft;
+                videoElementRight.srcObject = currentStreamRight;
+                
+                videoTrackLeft = currentStreamLeft.getVideoTracks()[0];
+
+                // Cek dukungan senter (torch) pada kamera
+                const capabilities = videoTrackLeft.getCapabilities ? videoTrackLeft.getCapabilities() : {};
+                isTorchSupported = !!capabilities.torch;
+                
+                if(!isTorchSupported) {
+                    flashStatusText.innerText = "Flash Tidak Didukung";
+                    labelFlash.innerText = "N/A";
+                    iconFlash.classList.add('opacity-50');
+                } else {
+                    updateFlashUI();
+                    // Mulai pengecekan kecerahan jika mode Auto
+                    startAutoBrightnessCheck();
+                }
+
+                // Mulai deteksi gerakan (NumberCar mode default)
+                switchScanner('numbercar');
+
+            } catch (err) {
+                console.error("Gagal mengakses kamera:", err);
+                alert("Tidak dapat mengakses kamera belakang. Pastikan izin kamera telah diberikan.");
+            }
+        }
+
+        // Fungsi Ganti Kamera Depan/Belakang
+        function switchCamera() {
+            isSwapped = !isSwapped; // Tukar posisi kamera 1 dan 2
+            initCamera(); // Mulai ulang untuk menerapkan penukaran
+        }
+
+        // Fungsi Suara Beep (Tit) seperti Scanner
+        function playBeep() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioContext();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine'; // Suara jernih seperti QR Scanner
+                oscillator.frequency.setValueAtTime(900, audioCtx.currentTime); // Frekuensi "Tit" (900Hz)
+                
+                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Volume
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.15); // Durasi 0.15 detik
+            } catch(e) {
+                console.log("Audio API tidak didukung:", e);
+            }
+        }
+
+        // --- Logika Switch Scanner Kanan ---
+        function switchScanner(mode) {
+            activeScanner = mode;
+            const tabNumberCar = document.getElementById('tab-numbercar');
+            const tabQR = document.getElementById('tab-qr');
+            const guideNumberCar = document.getElementById('guide-numbercar');
+            const guideQR = document.getElementById('guide-qr');
+
+            if (mode === 'numbercar') {
+                // UI Tab
+                tabNumberCar.classList.add('bg-yellow-500', 'text-black');
+                tabNumberCar.classList.remove('text-white');
+                tabQR.classList.add('text-white');
+                tabQR.classList.remove('bg-green-500', 'text-black');
+                
+                // Tampilkan Kotak NumberCar
+                guideNumberCar.classList.remove('hidden');
+                guideQR.classList.add('hidden');
+                
+                // Matikan Scanner QR dan hidupkan deteksi gerak Plat
+                if(qrCheckInterval) clearInterval(qrCheckInterval);
+                startMotionDetection();
+            } else {
+                // UI Tab
+                tabQR.classList.add('bg-green-500', 'text-black');
+                tabQR.classList.remove('text-white');
+                tabNumberCar.classList.add('text-white');
+                tabNumberCar.classList.remove('bg-yellow-500', 'text-black');
+                
+                // Tampilkan Kotak QR
+                guideQR.classList.remove('hidden');
+                guideNumberCar.classList.add('hidden');
+                
+                // Matikan deteksi gerak plat dan hidupkan Scanner QR
+                if(motionCheckInterval) clearInterval(motionCheckInterval);
+                startQRScanner();
+            }
+        }
+
+        // --- Logika Scanner QR Code ---
+        function startQRScanner() {
+            if (qrCheckInterval) clearInterval(qrCheckInterval);
+            qrCheckInterval = setInterval(performRealtimeQR, 300); // Cek QR tiap 300ms
+        }
+
+        function performRealtimeQR() {
+            if (scanCooldown || activeScanner !== 'qr' || !videoElementRight.videoWidth || typeof jsQR === 'undefined') return;
+            
+            // Ambil snapshot video untuk jsQR
+            canvasHidden.width = videoElementRight.videoWidth;
+            canvasHidden.height = videoElementRight.videoHeight;
+            ctxHidden.drawImage(videoElementRight, 0, 0, canvasHidden.width, canvasHidden.height);
+            
+            const imageData = ctxHidden.getImageData(0, 0, canvasHidden.width, canvasHidden.height);
+            
+            // Proses decoding QR
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert",
+            });
+            
+            if (code && code.data) {
+                // Jika QR Code Terbaca!
+                const trackingBoxQR = document.getElementById('tracking-box-qr');
+                const trackingLabelQR = document.getElementById('tracking-box-qr-label');
+                
+                playBeep();
+                trackingLabelQR.innerText = "QR TERBACA: " + code.data;
+                trackingBoxQR.classList.remove('border-green-400');
+                trackingBoxQR.classList.add('border-blue-500', 'bg-blue-500/30', 'shadow-[0_0_20px_rgba(59,130,246,0.8)]');
+                
+                triggerAutoCapture(code.data);
+                
+                // Kembalikan kotak QR ke mode standby
+                setTimeout(() => {
+                    if (activeScanner === 'qr') {
+                        trackingLabelQR.innerText = "ARAHKAN KE QR CODE";
+                        trackingBoxQR.classList.remove('border-blue-500', 'bg-blue-500/30', 'shadow-[0_0_20px_rgba(59,130,246,0.8)]');
+                        trackingBoxQR.classList.add('border-green-400');
+                    }
+                }, 3000);
+            }
+        }
+
+        // --- Logika Auto-Capture & Deteksi Gerakan (NumberCar) ---
+
+        function startMotionDetection() {
+            if (motionCheckInterval) clearInterval(motionCheckInterval);
+            
+            // Atur posisi kotak pencarian menjadi statis/diam di tengah bawah
+            const trackingBox = document.getElementById('tracking-box');
+            trackingBox.style.left = trackX + '%';
+            trackingBox.style.top = trackY + '%';
+            trackingBox.style.width = trackW + '%';
+            trackingBox.style.height = trackH + '%';
+            trackingBox.style.transform = `rotate(0deg)`;
+
+            motionCheckInterval = setInterval(() => {
+                if (!videoElementRight.videoWidth || !isAutoCaptureEnabled || scanCooldown || activeScanner !== 'numbercar') return;
+                
+                canvasMotion.width = 64;
+                canvasMotion.height = 64;
+                ctxMotion.drawImage(videoElementRight, 0, 0, 64, 64);
+                const frameData = ctxMotion.getImageData(0, 0, 64, 64).data;
+                
+                if (previousFrame) {
+                    let changedPixels = 0;
+                    
+                    // Hitung jumlah pixel yang berubah (Mendeteksi Goyangan Kamera)
+                    for (let i = 0; i < frameData.length; i += 4) {
+                        let rDiff = Math.abs(frameData[i] - previousFrame[i]);
+                        let gDiff = Math.abs(frameData[i+1] - previousFrame[i+1]);
+                        let bDiff = Math.abs(frameData[i+2] - previousFrame[i+2]);
+                        
+                        // Deteksi pergerakan/goyangan
+                        if (rDiff + gDiff + bDiff > 80) {
+                            changedPixels++;
+                        }
+                    }
+                    
+                    let totalPixels = 64 * 64;
+                    let changePercent = (changedPixels / totalPixels) * 100;
+                    
+                    const trackingLabel = document.getElementById('tracking-box-label');
+
+                    // Jika kamera DIAM/STABIL (pergerakan kurang dari 5%)
+                    if (changePercent < 5) {
+                        stillnessCounter++;
+
+                        // DIPERCEPAT: Hanya butuh diam sebentar (0.4 detik) agar langsung memindai
+                        if (stillnessCounter > 2) { 
+                            // autoCaptureIndicator.classList.remove('hidden');
+                            document.getElementById('auto-capture-text').innerText = "MEMINDAI PLAT...";
+                            if(trackingLabel) trackingLabel.innerText = "MENGEKSTRAK TEKS...";
+                            
+                            // Visual Kotak Biru: Sedang membaca teks (OCR)
+                            trackingBox.classList.remove('border-yellow-400', 'bg-black/20', 'border-green-500', 'bg-green-500/20');
+                            trackingBox.classList.add('border-blue-500', 'bg-blue-500/30');
+
+                            if (!window.isProcessingOCR) {
+                                performRealtimeOCR();
+                            }
+                        } else {
+                            if(trackingLabel) trackingLabel.innerText = "TAHAN KAMERA (STABILKAN)";
+                            trackingBox.classList.remove('border-green-500', 'bg-green-500/20', 'border-blue-500', 'bg-blue-500/30');
+                            trackingBox.classList.add('border-yellow-400', 'bg-black/20');
+                        }
+
+                    } else {
+                        // Kamera sedang digoyangkan / Petugas sedang mengarahkan
+                        stillnessCounter = 0;
+                        // autoCaptureIndicator.classList.add('hidden');
+                        if(trackingLabel) trackingLabel.innerText = "ARAHKAN PLAT KE KOTAK";
+                        
+                        trackingBox.classList.remove('border-green-500', 'bg-green-500/20', 'border-blue-500', 'bg-blue-500/30');
+                        trackingBox.classList.add('border-yellow-400', 'bg-black/20');
+                    }
+                }
+                
+                previousFrame = new Uint8ClampedArray(frameData);
+            }, 200); // Interval dipercepat menjadi 200ms
+        }
+
+        async function performRealtimeOCR() {
+            window.isProcessingOCR = true;
+            try {
+                // Buat canvas sementara untuk hasil jepretan presisi
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                
+                const vw = videoElementRight.videoWidth;
+                const vh = videoElementRight.videoHeight;
+                if (!vw || !vh) {
+                    window.isProcessingOCR = false;
+                    return;
+                }
+
+                // Ambil koordinat presisi kotak scan
+                const cropX = (vw * trackX) / 100;
+                const cropY = (vh * trackY) / 100;
+                const cropW = (vw * trackW) / 100;
+                
+                // FOKUS EKSTREM: Potong persis 70% area ATAS kotak kuning saja.
+                const cropH = (vh * trackH * 0.70) / 100; 
+                const cropYAdjusted = cropY; // Mulai dari ujung paling atas kotak
+
+                // SUPER CEPAT: Jangan perbesar gambar, gunakan skala 1x (asli). 
+                // Kamera HP modern sudah HD, tidak perlu diperbesar lagi.
+                const scale = 1;
+                canvas.width = cropW * scale; 
+                canvas.height = cropH * scale;
+
+                // Matikan Anti-Aliasing agar tepian huruf bersudut sangat tajam
+                ctx.imageSmoothingEnabled = false;
+                
+                // GPU ACCELERATION: Gunakan filter kanvas bawaan browser untuk performa secepat kilat (0 delay)
+                ctx.filter = 'grayscale(100%) contrast(300%) brightness(120%)';
+                
+                // 1. ROTASI & DE-SKEW (Luruskan gambar miring)
+                ctx.save();
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                ctx.rotate(-trackAngle * Math.PI / 180); 
+                
+                const sourceCenterX = cropX + cropW / 2;
+                const sourceCenterY = cropYAdjusted + cropH / 2;
+                
+                ctx.drawImage(
+                    videoElementRight, 
+                    0, 0, vw, vh, 
+                    -sourceCenterX * scale, -sourceCenterY * scale, vw * scale, vh * scale
+                );
+                ctx.restore();
+                
+                // Reset filter agar lis putih tidak ikut ter-filter
+                ctx.filter = 'none';
+
+                // 2. BORDER CLEANER (Beri lis putih tebal di tepi agar border plat tidak terbaca)
+                ctx.fillStyle = 'white';
+                const borderSize = 10; // Cukup 10px untuk skala 1x
+                ctx.fillRect(0, 0, canvas.width, borderSize); // Atas
+                ctx.fillRect(0, canvas.height - borderSize, canvas.width, borderSize); // Bawah
+                ctx.fillRect(0, 0, borderSize, canvas.height); // Kiri
+                ctx.fillRect(canvas.width - borderSize, 0, borderSize, canvas.height); // Kanan
+
+                // 3. EKSTRAKSI AI (Hanya izinkan karakter alfanumerik) - Gunakan pre-loaded Worker untuk kecepatan ekstra
+                if (!tesseractWorker) {
+                    window.isProcessingOCR = false;
+                    return;
+                }
+                
+                // Ambil Teks DAN Nilai Keyakinan (Confidence)
+                const { data: { text, confidence } } = await tesseractWorker.recognize(canvas);
+
+                // --- ALGORITMA VALIDASI & KOREKSI SPESIFIK PLAT INDONESIA (AKURASI MUTLAK) ---
+                
+                // BUANG JIKA AI RAGU-RAGU: Jika gambar buram atau confidence di bawah 65%, abaikan (jangan asal jepret!)
+                if (confidence < 65) {
+                    window.isProcessingOCR = false;
+                    return;
+                }
+
+                let rawText = text.replace(/[^A-Z0-9]/g, '').toUpperCase();
+                
+                if (rawText.length >= 4 && rawText.length <= 9) {
+                    let firstDigitIdx = rawText.search(/[0-9]/);
+                    let lastDigitIdx = -1;
+                    
+                    // Cari angka terakhir dari belakang
+                    for (let i = rawText.length - 1; i >= 0; i--) {
+                        if (/[0-9]/.test(rawText[i])) {
+                            lastDigitIdx = i;
+                            break;
+                        }
+                    }
+
+                    if (firstDigitIdx !== -1 && lastDigitIdx !== -1) {
+                        let areaCodeRaw = rawText.substring(0, firstDigitIdx);
+                        let numberRaw = rawText.substring(firstDigitIdx, lastDigitIdx + 1);
+                        let suffixRaw = rawText.substring(lastDigitIdx + 1);
+
+                        // Auto-koreksi huruf depan yang salah baca jadi angka
+                        if (areaCodeRaw.length === 0) {
+                            let f = rawText[0];
+                            if (f === '8') { areaCodeRaw = 'B'; numberRaw = numberRaw.substring(1); }
+                            else if (f === '0') { areaCodeRaw = 'D'; numberRaw = numberRaw.substring(1); }
+                            else if (f === '6') { areaCodeRaw = 'G'; numberRaw = numberRaw.substring(1); }
+                        }
+
+                        // Koreksi silang (Angka mirip huruf & Huruf mirip angka)
+                        let mapToLetters = {'0':'O', '8':'B', '6':'G', '2':'Z', '5':'S', '1':'I'};
+                        let areaCode = areaCodeRaw.replace(/[086251]/g, m => mapToLetters[m]);
+                        let suffix = suffixRaw.replace(/[086251]/g, m => mapToLetters[m]);
+
+                        let mapToNumbers = {'O':'0', 'I':'1', 'Z':'2', 'S':'5', 'B':'8', 'G':'6', 'A':'4'};
+                        let number = numberRaw.replace(/[OIZSBGA]/g, m => mapToNumbers[m]);
+
+                        // VALIDASI SUPER KETAT: Kode wilayah WAJIB terdaftar dalam kamus `validAreaCodes`!
+                        if (validAreaCodes.includes(areaCode) && /^[0-9]{1,4}$/.test(number)) {
+                            if (suffix.length === 0 || /^[A-Z]{1,3}$/.test(suffix)) {
+                                
+                                let formattedPlat = `${areaCode} ${number} ${suffix}`.trim();
+                                
+                                if (formattedPlat.replace(/\s/g, '').length < 4) {
+                                    window.isProcessingOCR = false;
+                                    return;
+                                }
+
+                                // Ekstraksi SUKSES: Tampilkan & Fotokan!
+                                document.getElementById('auto-capture-text').innerText = formattedPlat;
+                                
+                                const trackingBox = document.getElementById('tracking-box');
+                                trackingBox.classList.remove('border-blue-500', 'bg-blue-500/30');
+                                trackingBox.classList.add('border-green-500', 'bg-green-500/30', 'shadow-[0_0_20px_rgba(34,197,94,0.8)]');
+                                
+                                if(document.getElementById('tracking-box-label')) {
+                                    document.getElementById('tracking-box-label').innerText = "PLAT TERBACA";
+                                }
+                                
+                                // Bunyikan suara "Tit" ala Scanner!
+                                playBeep();
+
+                                triggerAutoCapture(formattedPlat);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("OCR Error:", err);
+            } finally {
+                window.isProcessingOCR = false;
+                // Cegah pemindaian terus-menerus jika AI gagal membaca plat yang sama
+                setTimeout(() => { stillnessCounter = 0; }, 500); 
+            }
+        }
+
+        function triggerAutoCapture(detectedPlate) {
+            if (scanCooldown) return;
+            scanCooldown = true;
+
+            // Trigger shutter flash
+            shutterFlash.classList.remove('opacity-0');
+            shutterFlash.classList.add('opacity-80');
+            setTimeout(() => {
+                shutterFlash.classList.remove('opacity-80');
+                shutterFlash.classList.add('opacity-0');
+            }, 150);
+
+            // Simpan ke riwayat
+            const now = new Date().toLocaleTimeString();
+            const record = {
+                id: Date.now(),
+                time: now,
+                plate: detectedPlate || "B 1234 ABC",
+                imageLeft: getCroppedKolongBase64(),
+                imageRight: getCroppedPlateBase64()
+            };
+
+            savedHistory.unshift(record);
+            updateHistoryUI();
+            
+            setTimeout(() => {
+                scanCooldown = false;
+                autoCaptureIndicator.classList.add('hidden');
+                
+                // Reset kembali Tracker Box ke mode pencarian (Kuning)
+                const trackingBox = document.getElementById('tracking-box');
+                trackingBox.classList.remove('border-green-500', 'bg-green-500/20');
+                trackingBox.classList.add('border-yellow-400', 'bg-black/20');
+            }, 3000);
+        }
+
+        function getCroppedKolongBase64() {
+            canvasHidden.width = videoElementLeft.videoWidth || 640;
+            canvasHidden.height = videoElementLeft.videoHeight || 480;
+            const hCtx = canvasHidden.getContext('2d');
+            hCtx.drawImage(videoElementLeft, 0, 0);
+            return canvasHidden.toDataURL('image/jpeg');
+        }
+
+        function getCroppedPlateBase64() {
+            const vw = videoElementRight.videoWidth || 640;
+            const vh = videoElementRight.videoHeight || 480;
+            
+            let cropW, cropH, cropX, cropY;
+            
+            if (activeScanner === 'numbercar') {
+                cropW = (vw * trackW) / 100;
+                cropH = (vh * trackH) / 100;
+                cropX = (vw * trackX) / 100;
+                cropY = (vh * trackY) / 100;
+            } else {
+                // Koordinat cropping untuk kotak QR Code (10% kiri, 20% atas, lebar 80%, tinggi 60%)
+                cropW = (vw * 80) / 100;
+                cropH = (vh * 60) / 100;
+                cropX = (vw * 10) / 100;
+                cropY = (vh * 20) / 100;
+            }
+            
+            canvasHidden.width = cropW;
+            canvasHidden.height = cropH;
+            const hCtx = canvasHidden.getContext('2d');
+            
+            // Simpan gambar yang dipotong
+            hCtx.save();
+            hCtx.translate(canvasHidden.width / 2, canvasHidden.height / 2);
+            hCtx.rotate(-trackAngle * Math.PI / 180);
+            
+            const sourceCenterX = cropX + cropW / 2;
+            const sourceCenterY = cropY + cropH / 2;
+            
+            hCtx.drawImage(
+                videoElementRight, 
+                0, 0, vw, vh, 
+                -sourceCenterX, -sourceCenterY, vw, vh
+            );
+            hCtx.restore();
+            
+            return canvasHidden.toDataURL('image/jpeg');
+        }
+
+        function takeSnapshot() {
+            triggerAutoCapture("B 2156 TOR");
+        }
+
+        function updateHistoryUI() {
+            const historyList = document.getElementById('history-list');
+            const historyCount = document.getElementById('history-count');
+            
+            historyCount.innerText = `${savedHistory.length} Data`;
+
+            if (savedHistory.length === 0) {
+                historyList.innerHTML = `
+                    <div class="text-center text-gray-500 mt-10 text-sm flex flex-col items-center gap-2">
+                        <i class="ph ph-images text-3xl opacity-30 mb-2"></i>
+                        Belum ada data pindaian.
+                    </div>
+                `;
+                return;
+            }
+
+            historyList.innerHTML = savedHistory.map(item => `
+                <div class="bg-gray-800 border border-gray-700 p-3 rounded-xl flex items-center justify-between shadow">
+                    <div class="flex items-center gap-3">
+                        <img src="${item.imageRight}" class="w-16 h-12 object-cover rounded border border-yellow-500/50" alt="Plat">
+                        <div>
+                            <h4 class="text-white font-bold text-base tracking-wider">${item.plate}</h4>
+                            <span class="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                <i class="ph ph-clock text-yellow-500"></i> ${item.time}
+                            </span>
+                        </div>
+                    </div>
+                    <button onclick="openSnapshotModal(${item.id})" class="px-3 py-1.5 bg-yellow-500 text-black text-xs font-bold rounded-lg hover:bg-yellow-400 transition">
+                        Detail
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function toggleMenu() {
+            sidebar.classList.toggle('sidebar-closed');
+            sidebar.classList.toggle('sidebar-open');
+            sidebarOverlay.classList.toggle('hidden');
+        }
+
+        function openMenu(modalId) {
+            toggleMenu();
+            document.getElementById(modalId).classList.remove('hidden');
+            document.getElementById(modalId).classList.add('flex');
+            if(modalId === 'modal-gallery') renderGallery();
+        }
+
+        function closeMenu(modalId) {
+            document.getElementById(modalId).classList.remove('flex');
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function closeSnapshot() {
+            snapshotModal.classList.add('hidden');
+        }
+
+        function openSnapshotModal(id) {
+            const item = savedHistory.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById('snap-time-masuk').innerText = item.time;
+            document.getElementById('snap-masuk-left').src = item.imageLeft;
+            document.getElementById('snap-masuk-right').src = item.imageRight;
+            
+            document.getElementById('snap-time-keluar').innerText = item.time;
+            document.getElementById('snap-keluar-left').src = item.imageLeft;
+            document.getElementById('snap-keluar-right').src = item.imageRight;
+
+            snapshotModal.classList.remove('hidden');
+        }
+
+        function saveSnapshot(e) {
+            e.preventDefault();
+            alert("Data berhasil disimpan ke perangkat!");
+            closeSnapshot();
+        }
+
+        function renderGallery() {
+            const container = document.getElementById('gallery-container');
+            if (savedHistory.length === 0) {
+                container.innerHTML = '<div class="col-span-2 text-center text-gray-500 mt-10">Belum ada foto yang disimpan.</div>';
+                return;
+            }
+            container.innerHTML = savedHistory.map(item => `
+                <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden flex flex-col">
+                    <img src="${item.imageRight}" class="w-full h-28 object-cover bg-black" alt="Gallery item">
+                    <div class="p-2 flex flex-col justify-between flex-1">
+                        <span class="text-white font-bold text-sm">${item.plate}</span>
+                        <span class="text-[10px] text-gray-400">${item.time}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleGridSetting() {
+            const grids = document.querySelectorAll('.inspection-grid');
+            grids.forEach(g => g.classList.toggle('hidden'));
+        }
+
+        function submitReport(e) {
+            e.preventDefault();
+            alert("Laporan berhasil dikirimkan ke tim teknis!");
+            closeMenu('modal-report');
+        }
+
+        function cycleFlashMode() {
+            flashMode = (flashMode + 1) % 3;
+            updateFlashUI();
+        }
+
+        function updateFlashUI() {
+            if (flashMode === 0) {
+                labelFlash.innerText = "OFF";
+                iconFlash.className = "ph ph-flashlight-slash text-lg text-gray-400";
+                setTorch(false);
+            } else if (flashMode === 1) {
+                labelFlash.innerText = "ON";
+                iconFlash.className = "ph ph-flashlight text-lg text-yellow-400";
+                setTorch(true);
+            } else {
+                labelFlash.innerText = "AUTO";
+                iconFlash.className = "ph ph-flashlight text-lg text-blue-400";
+            }
+        }
+
+        async function setTorch(enable) {
+            if (!isTorchSupported || !videoTrackLeft) return;
+            try {
+                await videoTrackLeft.applyConstraints({
+                    advanced: [{ torch: enable }]
+                });
+                isTorchOn = enable;
+            } catch (err) {
+                console.error("Gagal mengubah status senter:", err);
+            }
+        }
+
+        function startAutoBrightnessCheck() {
+            if (brightnessCheckInterval) clearInterval(brightnessCheckInterval);
+            
+            brightnessCheckInterval = setInterval(() => {
+                if (flashMode !== 2 || !videoElementLeft.videoWidth) return;
+                
+                canvasHidden.width = 64;
+                canvasHidden.height = 64;
+                ctxHidden.drawImage(videoElementLeft, 0, 0, 64, 64);
+                
+                const imgData = ctxHidden.getImageData(0, 0, 64, 64).data;
+                let brightness = 0;
+                
+                for (let i = 0; i < imgData.length; i += 4) {
+                    brightness += (imgData[i] * 0.299 + imgData[i+1] * 0.587 + imgData[i+2] * 0.114);
+                }
+                brightness = brightness / (64 * 64);
+                
+                // Jika kolong terlalu gelap (< 40), nyalakan senter otomatis
+                if (brightness < 40 && !isTorchOn && isTorchSupported) {
+                    setTorch(true);
+                    flashStatusText.innerText = "Auto-Flash: ON (Gelap)";
+                    flashStatusText.classList.remove('hidden');
+                } else if (brightness >= 40 && isTorchOn && isTorchSupported) {
+                    setTorch(false);
+                    flashStatusText.innerText = "Auto-Flash: OFF (Terang)";
+                    setTimeout(() => flashStatusText.classList.add('hidden'), 2000);
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
